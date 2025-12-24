@@ -78,18 +78,10 @@ If you are approaching this from a networking background and thinking “this is
 
 |If you think…             |Read this…                    |To understand…                                                   |
 |--------------------------|------------------------------|-----------------------------------------------------------------|
-|“This is just SDN.”      
-|`docs/01-architecture.md`     
-|Why Aether is a governance constraint over SDN, not a replacement|
-|“This can’t scale.”     
-|`docs/00-non-goals.md`     
-|How refusing flow state avoids scaling pressure    |
-|“How would I deploy this?”
-|`docs/03-integration-guide.md`
-|The boundary between Aether and existing equipment       
-|“Isn’t this just QoS?”   
-|`docs/02-policy-schema.md` 
-|How policy arbitration differs from packet prioritization  |
+|“This is just SDN.”       |`docs/01-architecture.md`     |Why Aether is a governance constraint over SDN, not a replacement|
+|“This can’t scale.”       |`docs/00-non-goals.md`        |How refusing flow state avoids scaling pressure                  |
+|“How would I deploy this?”|`docs/03-integration-guide.md`|The boundary between Aether and existing equipment               |
+|“Isn’t this just QoS?”    |`docs/02-policy-schema.md`    |How policy arbitration differs from packet prioritization        |
 
 -----
 
