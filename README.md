@@ -1,149 +1,158 @@
+# Aether
 
-⸻
+A policy-driven uplink arbitration framework for deterministic, auditable control-plane coordination in multi-provider networks.
 
-Aether
+**Version:** 1.0-Draft  
+**Status:** Published Specification (RFC-style)  
+**Target Environments:** Critical infrastructure, satellite–terrestrial hybrid networks, disaster response
 
-A policy-driven uplink arbitration framework for deterministic, auditable control-plane coordination
+-----
 
-Version: 1.0
-Status: Published Specification (Draft / RFC-style)
-Target: Critical Infrastructure, Satellite/Terrestrial Hybrid Networks, Disaster Response
+## Overview
 
-⸻
+Aether defines a constrained control-plane coordination layer for environments with multiple uplinks and heterogeneous providers (Satellite, Terrestrial, Cellular).
 
+It does not replace routing protocols, forwarding behavior, or existing control systems. Instead, it defines how policy intent can be translated into auditable, deterministic directives without introducing inline dependencies or opaque decision logic.
 
-The Core Thesis
+The specification is intentionally limited in scope.
 
-Aether is not designed to outperform SDN, routing protocols, or orchestration systems.
-It is designed to constrain them.
+-----
 
-Modern network control planes suffer from scope creep: over time they accumulate hidden responsibilities—DPI, heuristics, vendor-specific state, implicit inference—until they become difficult to audit and unpredictable under failure.
+## The Problem
 
-Aether deliberately trades capability for predictability.
+Modern network control planes often suffer from scope creep. Orchestration systems frequently accumulate hidden responsibilities—Deep Packet Inspection (DPI), heuristic path computation, vendor-specific state—until they become opaque and unpredictable during failure.
 
-It defines a strict interaction model between intent and execution that remains auditable and valid even when links flap, telemetry degrades, or controllers disappear. Aether explicitly assumes that normal routing, forwarding, and header processing behave exactly as they do today.
+Aether addresses this by constraining the control plane. It defines a strict interaction boundary between intent and execution that remains valid even when links flap, telemetry degrades, or controllers disappear.
 
-⸻
+**Core Thesis:** Aether deliberately trades capability for predictability.
 
-The Aether Constraint
+-----
 
-To remain deterministic and auditable, Aether deliberately refuses to do the following:
-	•	No Payload Inspection
-Traffic classification is assumed to occur upstream at the edge.
-	•	No Path Computation
-Aether does not replace BGP, OSPF, IS-IS, or MPLS. It dictates which existing path should be preferred, not how paths are computed.
-	•	No Per-Flow State
-Aether manages uplink and provider state, not individual sessions or users.
-	•	No Inline Presence
-Aether provides control-plane directives only. It never processes, forwards, proxies, buffers, or inspects packets.
+## The Aether Constraint
 
-These constraints are intentional. Violating any of them breaks determinism and auditability.
+To preserve determinism and auditability, Aether explicitly refuses to perform the following functions:
 
-⸻
+- **No Payload Inspection:** Traffic classification must occur upstream; Aether operates on pre-tagged traffic classes.
+- **No Path Computation:** Aether does not replace BGP, OSPF, IS-IS, or MPLS. It selects between existing, valid paths—not how paths are computed.
+- **No Per-Flow State:** Arbitration is performed at the provider/uplink level, not at the session or user level.
+- **No Inline Presence:** Aether provides out-of-band directives only. It never processes, forwards, proxies, buffers, or inspects data-plane packets.
 
-Skeptic’s Map
+**Aether does not compute paths, signal devices, or participate in convergence.**
 
-If you are coming from a networking background and think “this is just [X]”, use this map to find the specific technical answer to your objection.
+These constraints are intentional. Relaxing them materially changes the failure and audit characteristics of the system.
 
-If you think…	Read this document…	To understand…
-“This is just SDN.”	docs/01-architecture.md	Why Aether is a governance layer over SDN, not a replacement
-“This can’t scale.”	docs/00-non-goals.md	How Aether avoids scaling issues by refusing flow state
-“How would I deploy this?”	docs/03-integration-guide.md	The boundary between Aether and your hardware
-“Isn’t this just QoS?”	docs/02-policy-schema.md	Why policy arbitration ≠ packet prioritization
+-----
 
+## How It Works
 
-⸻
+Aether functions as a **policy arbiter**, not a signaling protocol or path computation engine. It consumes two primary inputs to produce a single, deterministic output.
 
-How It Works
+### Input/Output Model
 
-Aether functions as a state referee, not a signaling protocol or path computation engine.
+**Inputs:**
 
-It takes two inputs and produces one auditable output:
-	•	Input A — Policy
-Explicit, operator-defined constraints
-(e.g., “Critical telemetry must use the most stable link regardless of latency”)
-	•	Input B — Observed Telemetry
-Link-level performance data (loss, latency, availability), not per-flow or packet-level data
-	•	Output — Directive
-A deterministic control-plane instruction sent to existing equipment
+- **Policy (Constraints):** Operator-defined rules (e.g., “Critical Telemetry: Path Stability > Latency”)
+- **Telemetry (Observed State):** Link-level performance metrics (loss, latency, jitter) defined in `schema/telemetry-v1.json`
 
-Interaction Model
+**Output:**
 
-[ Business Logic ] → [ Aether Policy ] → [ Aether Decision Engine ]
-                                              |
-         [ Observed Link Telemetry ] -----------+
-                                              |
-                                    [ Deterministic Directive ]
-                                              |
-                                [ Hardware / SDN / BGP / IGP ]
+- **Directive:** A control-plane instruction for the underlying hardware or SDN controller
 
-If Aether fails or is removed, forwarding continues using existing behavior.
+### Interaction Logic
 
-⸻
+```
+[ Orchestrator ] → [ Policy ] → [ Aether Engine ]
+                                       ↑
+[ Link Telemetry ] ────────────────────┘
+                                       ↓
+                          [ Deterministic Directive ] → [ Hardware / BGP / SDN ]
+```
 
-Repository Structure
+**Fail-Safe:** If the Aether engine fails, the underlying hardware maintains its last-known valid state or reverts to local routing protocol defaults.
 
-1. The Specification (docs/)
-	•	Non-Goals
-The defensive perimeter — what Aether will never do
-	•	Architecture
-Formal definition of the control-plane boundary
-	•	Policy Schema
-Deterministic grammar for expressing intent
-	•	Human Continuity Mode (HCM)
-A tightly bounded emergency state for disaster response
-	•	Conformance Specification
-Binary, testable requirements and audit criteria
+-----
 
-2. The Contract (schema/)
+## Skeptic’s Map
+
+If you are approaching this from a networking background and thinking “this is just [X]”, the documents below address those boundaries directly.
+
+|If you think…             |Read this…                    |To understand…                                                   |
+|--------------------------|------------------------------|-----------------------------------------------------------------|
+|“This is just SDN.”      
+|`docs/01-architecture.md`     
+|Why Aether is a governance constraint over SDN, not a replacement|
+|“This can’t scale.”     
+|`docs/00-non-goals.md`     
+|How refusing flow state avoids scaling pressure    |
+|“How would I deploy this?”
+|`docs/03-integration-guide.md`
+|The boundary between Aether and existing equipment       
+|“Isn’t this just QoS?”   
+|`docs/02-policy-schema.md` 
+|How policy arbitration differs from packet prioritization  |
+
+-----
+
+## Repository Structure
+
+### 1. Specification Documentation (`docs/`)
+
+- **Non-Goals:** Explicit scope boundaries and what Aether will never do
+- **Architecture:** Formal definition of the control-plane enforcement boundary
+- **Policy Schema:** Deterministic grammar for expressing intent
+- **Human Continuity Mode (HCM):** Bounded emergency state for disaster response
+- **Conformance Specification:** Binary, testable requirements
+
+### 2. Implementation Contracts (`schema/`)
 
 Canonical JSON schemas defining the only interfaces Aether speaks:
-	•	telemetry-v1.json — what the network is allowed to report
-	•	decision-log-v1.json — tamper-evident decision records
-	•	hcm-activation-v1.json — emergency activation events
 
-3. Scenario Walkthroughs (examples/)
+- `telemetry-v1.json` — Standardized link-state reporting format
+- `decision-log-v1.json` — Schema for tamper-evident audit logs
+- `hcm-activation-v1.json` — Human Continuity Mode activation contract
 
-Conceptual walkthroughs demonstrating behavior under failure scenarios such as:
-	•	Flapping satellite links
-	•	Congested cellular backhaul
-	•	Partial telemetry loss
+### 3. Verification Scenarios (`examples/`)
 
-These are illustrative, not benchmarks.
+Scenario walkthroughs demonstrating state transitions during:
 
-⸻
+- Flapping satellite uplinks
+- Asymmetric telemetry loss
+- Congested backhaul arbitration
 
-Intended Adopters
-	•	Satellite Operators
-Offering resilience-focused services to government and NGO customers
-	•	Critical Infrastructure Operators
-Managing hybrid terrestrial–satellite connectivity for power, water, and emergency services
-	•	Procurement & Oversight Bodies
-Enforcing non–black-box behavior via conformance requirements
+These are explanatory, not benchmarks.
 
-⸻
+-----
 
-Status & License
+## Intended Audience
 
-This repository contains the published v1.0 draft specification of Aether.
+- Satellite and hybrid connectivity operators
+- Critical infrastructure network operators
+- Humanitarian and disaster response coordination
+- Procurement and oversight bodies seeking auditable, non-proprietary requirements
 
-It is intentionally specification-only:
-	•	No reference implementation
-	•	No hosted service
-	•	No vendor affiliation
+-----
 
-The goal is to define clear, enforceable constraints for a control-plane coordination layer and invite critique from people who have operated real networks.
+## Status & Conformance
 
-Feedback is explicitly welcome on:
-	•	Failure-mode realism
-	•	Boundary erosion in real deployments
-	•	Whether the constraints defined here are enforceable in practice
+This repository contains the **v1.0-Draft specification** of Aether.
 
-License:
-	•	Code: Apache 2.0
-	•	Documentation: Creative Commons Attribution 4.0 (CC BY 4.0)
+It is intentionally **specification-only:**
 
+- No reference implementation
+- No hosted service
+- No vendor affiliation
 
+The goal is to define enforceable boundaries for a control-plane coordination layer and invite critique from practitioners.
 
+**Feedback is explicitly welcome on:**
 
-⸻
+- Failure-mode realism
+- Boundary erosion in real deployments
+- Whether these constraints are enforceable in practice
+
+-----
+
+## License
+
+- **Code/Schemas:** Apache 2.0
+- **Documentation:** CC BY 4.0
