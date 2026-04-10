@@ -7,7 +7,7 @@
 A policy-driven uplink arbitration framework for deterministic, auditable control-plane coordination in multi-provider networks.
 
 **Version:** 1.0-Draft
-**Status:** Specification + Reference Implementation
+**Status:** Specification + Reference Implementation (52 tests)
 **Target Environments:** Critical infrastructure, satellite-terrestrial hybrid networks, disaster response
 
 -----
@@ -94,36 +94,53 @@ Rust reference implementation with HTTP API server. See [`aether-ref/README.md`]
 
 | Component | Path | Description |
 |-----------|------|-------------|
-| Policy engine | `src/engine/` | Deterministic evaluation (49 tests) |
+| Policy engine | `src/engine/` | Deterministic evaluation with conflict resolution |
 | HTTP API | `src/api/http.rs`, `openapi.yaml` | Axum server, 10 endpoints, OpenAPI 3.1 |
+| Authorization | `src/authz/` | Cedar-based API authorization (optional, Rust-native) |
 | Netlink adapter | `src/adapter/netlink.rs` | Linux `ip route` with idempotent apply and rollback |
 | Telemetry trust | `src/adapter/registry.rs` | HMAC verification, sequence monotonicity, heartbeat liveness |
-| Audit logging | `src/audit/` | HMAC-SHA256 tamper-evident chain |
+| Audit logging | `src/audit/` | HMAC-SHA256 tamper-evident decision chain |
 | HCM | `src/hcm/` | Human Continuity Mode lifecycle management |
-| Formal model | `formal/AetherSpec.tla` | TLA+ — policy completeness, HCM correctness (CI-verified) |
-| Authorization | `src/authz/` | Cedar-based API authorization (optional) |
+| Formal model | `formal/AetherSpec.tla` | TLA+ — 5 invariants, CI-verified on every push |
 | Deployment | `deploy/` | Docker Compose with Grafana + Loki observability stack |
-| Conformance tests | `tests/conformance/` | Hurl test files for AETH-C requirements |
-| Network topology | `tests/topology/` | Containerlab multi-link integration test topology |
 | Failure modes | `docs/failure-modes.md` | Explicit outputs for degraded/missing/expired scenarios |
 | Examples | `examples/policies/` | Critical infrastructure, disaster response, multi-provider |
 
+### Testing & Conformance
+
+| Path | Description |
+|------|-------------|
+| `tests/conformance/*.hurl` | 7 Hurl test files covering AETH-C conformance requirements |
+| `tests/conformance/setup.sh` | Server bootstrap script for conformance testing |
+| `tests/topology/` | Containerlab multi-link integration test topology |
+| `.github/workflows/test.yml` | Rust test + clippy + fmt on push/PR |
+| `.github/workflows/tla.yml` | TLC model checker on formal spec changes |
+| `.github/workflows/api-conformance.yml` | Schemathesis API fuzzing against OpenAPI spec |
+
 -----
 
-## Testing & Conformance
+## Testing
 
-### Unit Tests
+### Unit Tests (52 tests)
 ```bash
 cd aether-ref && cargo test
 ```
 
 ### API Conformance (Hurl)
 ```bash
-# Start server (see tests/conformance/setup.sh)
-hurl --test tests/conformance/*.hurl
+cd aether-ref
+bash ../tests/conformance/setup.sh
+hurl --test ../tests/conformance/*.hurl
 ```
 
-Tests cover: health endpoint, policy loading, deterministic evaluation, audit logging, HCM lifecycle, HCM mutual exclusion, and routing non-participation.
+Tests cover:
+- Health endpoint (AETH-C-007)
+- Policy loading and retrieval (AETH-C-008)
+- Deterministic evaluation (AETH-C-003)
+- Audit log completeness (AETH-C-007)
+- HCM lifecycle (Level 2)
+- HCM mutual exclusion (AETH-F-008)
+- Routing non-participation (AETH-C-010)
 
 ### API Fuzzing (Schemathesis)
 ```bash
@@ -131,28 +148,81 @@ pip install schemathesis
 st run aether-ref/openapi.yaml --base-url http://localhost:8080 --checks all
 ```
 
-### Formal Verification (TLA+)
-The TLA+ model at `formal/AetherSpec.tla` is verified in CI on every push. Five invariants are checked: PolicyCompleteness, ConflictDeterminism, HcmMutualExclusion, HcmBoundedDuration, HcmCumulativeBound.
+Property-based testing that auto-generates edge cases and invalid inputs from the OpenAPI spec.
 
-### Cedar Authorization
-Optional API authorization via [Cedar](https://www.cedarpolicy.com/) (Apache 2.0, Rust-native). Enable with:
+### Formal Verification (TLA+)
+The TLA+ model at `formal/AetherSpec.tla` is verified in CI via TLC model checker on every push to `formal/`. Five invariants are checked:
+- **PolicyCompleteness** — Every evaluation produces a decision
+- **ConflictDeterminism** — Same state always produces the same decision
+- **HcmMutualExclusion** — No concurrent HCM activations
+- **HcmBoundedDuration** — Active HCM never exceeds max duration
+- **HcmCumulativeBound** — Cumulative HCM duration is bounded
+
+-----
+
+## Cedar Authorization
+
+Optional API authorization via [Cedar](https://www.cedarpolicy.com/) (Apache 2.0, Rust-native crate — no sidecar, no network calls). Enable with:
+
 ```bash
 aether serve --bind 0.0.0.0:8080 --authz-policy deploy/authz-policy.cedar
 ```
-The sample policy grants admin full access, allows all users to evaluate/query, and restricts readonly users from modifying policies or HCM.
 
-### Observability (Grafana + Loki)
+The sample policy (`deploy/authz-policy.cedar`):
+- Grants `admin` full access to all operations
+- Allows all authenticated users to evaluate, query audit, read policies, ingest telemetry
+- Restricts `readonly` users from loading policies or managing HCM
+
+Authorization maps HTTP routes to Cedar actions (e.g., `POST /policies` → `Action::"LoadPolicy"`) and checks the `X-Aether-Principal` header.
+
+-----
+
+## Observability (Grafana + Loki)
+
 ```bash
 cd aether-ref/deploy && docker compose up
 ```
-Opens Grafana at `localhost:3000` with a pre-configured Aether Decisions dashboard showing decision timeline, HMAC chain status, and policy hit distribution.
 
-### Network Integration Testing (Containerlab)
+Starts the Aether engine alongside a pre-configured observability stack:
+
+- **Grafana** at `localhost:3000` — Aether Decisions dashboard with 4 panels:
+  - Decision timeline (log stream)
+  - Audit chain status (stat panel)
+  - Policy hit distribution (bar chart)
+  - HCM activation events (log stream)
+- **Loki** — Log aggregation for structured decision JSON
+- **Promtail** — Automatic log shipping from the Aether container
+
+-----
+
+## Network Integration Testing (Containerlab)
+
 ```bash
 cd tests/topology
 sudo containerlab deploy -t aether-multilink.clab.yml
 ```
-Deploys a 5-node topology: Aether controller + satellite/cellular/terrestrial gateways + client. See `tests/topology/README.md`.
+
+Deploys a 5-node topology simulating a multi-provider environment:
+
+| Node | Role | Network Impairment |
+|------|------|--------------------|
+| `aether-controller` | Aether engine | None |
+| `satellite-gw` | LEO provider gateway | 40ms delay, 10ms jitter, 2% loss |
+| `cellular-gw` | LTE provider gateway | 15ms delay, 5ms jitter |
+| `terrestrial-gw` | Fiber provider gateway | None |
+| `client` | Test client | Connected to all gateways |
+
+See `tests/topology/README.md` for setup, failover testing, and teardown instructions.
+
+-----
+
+## CI Integration
+
+| Workflow | Trigger | What It Does |
+|----------|---------|-------------|
+| `test.yml` | Push/PR | `cargo fmt --check` + `cargo clippy` + `cargo test` |
+| `tla.yml` | Push to `formal/` | TLC model checker verifies all 5 invariants |
+| `api-conformance.yml` | Push/PR | Build, start server, Schemathesis fuzz all endpoints |
 
 -----
 
