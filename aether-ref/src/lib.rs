@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod api;
 pub mod audit;
+pub mod authz;
 pub mod config;
 pub mod engine;
 pub mod error;

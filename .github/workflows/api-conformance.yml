@@ -1,0 +1,41 @@
+name: API Conformance
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  schemathesis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build Aether
+        run: cd aether-ref && cargo build --release
+
+      - name: Start Aether server
+        run: |
+          cd aether-ref
+          ./target/release/aether serve \
+            --bind 127.0.0.1:8080 \
+            --audit-key-hex 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef &
+          sleep 3
+          curl -sf http://127.0.0.1:8080/api/v1/health || (echo "Server failed to start" && exit 1)
+
+      - name: Load sample policy
+        run: |
+          curl -sf -X POST http://127.0.0.1:8080/api/v1/policies \
+            -H "Content-Type: application/yaml" \
+            --data-binary @aether-ref/deploy/sample-policy.yaml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install schemathesis
+
+      - name: Run Schemathesis
+        run: |
+          st run aether-ref/openapi.yaml \
+            --base-url http://127.0.0.1:8080 \
+            --checks all \
+            --hypothesis-max-examples 50

@@ -1,0 +1,39 @@
+name: aether-multilink
+topology:
+  nodes:
+    aether-controller:
+      kind: linux
+      image: aether-ref:latest
+      cmd: /usr/local/bin/aether serve --bind 0.0.0.0:8080 --audit-key-hex 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      ports:
+        - "8080:8080"
+
+    satellite-gw:
+      kind: linux
+      image: alpine:3.19
+      exec:
+        - apk add --no-cache iproute2
+        - tc qdisc add dev eth1 root netem delay 40ms 10ms loss 2%
+
+    cellular-gw:
+      kind: linux
+      image: alpine:3.19
+      exec:
+        - apk add --no-cache iproute2
+        - tc qdisc add dev eth1 root netem delay 15ms 5ms
+
+    terrestrial-gw:
+      kind: linux
+      image: alpine:3.19
+
+    client:
+      kind: linux
+      image: curlimages/curl:latest
+
+  links:
+    - endpoints: ["aether-controller:eth1", "satellite-gw:eth1"]
+    - endpoints: ["aether-controller:eth2", "cellular-gw:eth1"]
+    - endpoints: ["aether-controller:eth3", "terrestrial-gw:eth1"]
+    - endpoints: ["client:eth1", "satellite-gw:eth2"]
+    - endpoints: ["client:eth2", "cellular-gw:eth2"]
+    - endpoints: ["client:eth3", "terrestrial-gw:eth2"]

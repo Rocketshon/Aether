@@ -26,6 +26,9 @@ pub enum AetherError {
     #[error("serialization error: {0}")]
     Serialization(String),
 
+    #[error("authorization denied: {0}")]
+    Authorization(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
